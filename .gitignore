@@ -1,0 +1,71 @@
+# ---- Rust / Cargo ----
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo lockfile policy:
+#   - keep Cargo.lock for binaries (this crate ships a bin)
+#   - uncomment the next line if this becomes a library crate
+# Cargo.lock
+
+# ---- Secrets & local config ----
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials.json
+
+# ---- OS noise ----
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---- Editors / IDEs ----
+.idea/
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+*.swo
+*.swn
+*~
+.netrwhist
+.fleet/
+.zed/
+
+# ---- rust-analyzer / build caches ----
+rust-project.json
+.cargo/config.toml.local
+
+# ---- Coverage / profiling ----
+*.profraw
+*.profdata
+tarpaulin-report.html
+cobertura.xml
+lcov.info
+coverage/
+
+# ---- Logs & temp ----
+*.log
+*.log.*
+logs/
+tmp/
+.tmp/
+*.bak
+*.orig
+
+# ---- Misc tooling ----
+.direnv/
+.envrc.local
+node_modules/
