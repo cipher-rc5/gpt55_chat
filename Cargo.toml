@@ -1,0 +1,23 @@
+[package]
+name = "gpt55-chat"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "gpt55-chat"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.98"
+dotenvy = "0.15.7"
+reqwest = { version = "0.13.3", features = ["json"] }
+serde = { version = "1.0.219", features = ["derive"] }
+thiserror = "2.0.12"
+tokio = { version = "1.44.1", features = ["rt", "macros"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+opt-level = 3
