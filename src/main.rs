@@ -4,28 +4,51 @@
 
 mod client;
 mod config;
+mod tools;
 mod types;
 
 use std::io::{self, BufRead, Write};
 
 use reqwest::Client;
 
-use crate::client::{extract_reply, send_message};
+use crate::client::{extract_reply, run_turn};
 use crate::config::load_config;
-use crate::types::{ChatError, InputMessage, Role};
+use crate::types::{ChatError, Tool};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     let config = load_config().map_err(|e| anyhow::anyhow!("{e}"))?;
-    let http = Client::new();
+    let http = Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| anyhow::anyhow!("failed to build HTTP client: {e}"))?;
 
     let effort_label = config
         .reasoning_effort
-        .map(|e| format!("{e:?}").to_ascii_lowercase())
+        .map(|e| e.as_str().to_owned())
         .unwrap_or_else(|| "default".into());
+
+    let tool_names: Vec<&str> = config
+        .tools
+        .iter()
+        .map(|t| match t {
+            Tool::Function(f) => f.name.as_str(),
+        })
+        .collect();
+    let tools_label = if tool_names.is_empty() {
+        "off".to_string()
+    } else {
+        tool_names.join(",")
+    };
+    let instructions_label = match &config.instructions {
+        Some(s) => format!("{} chars", s.len()),
+        None => "none".to_string(),
+    };
+
     println!(
-        "{} chat | reasoning={} | type 'exit' to quit\n",
-        config.model, effort_label
+        "{} chat | reasoning={} | instructions={} | tools={} | type 'exit' to quit\n",
+        config.model, effort_label, instructions_label, tools_label
     );
 
     let stdin = io::stdin();
@@ -57,12 +80,7 @@ async fn main() -> anyhow::Result<()> {
             break;
         }
 
-        let input = [InputMessage {
-            role: Role::User,
-            content: user_input,
-        }];
-
-        match send_message(&http, &config, &input, previous_response_id.as_deref()).await {
+        match run_turn(&http, &config, &user_input, previous_response_id.as_deref()).await {
             Ok(response) => {
                 if response.status == "incomplete" {
                     let reason = response
@@ -73,11 +91,27 @@ async fn main() -> anyhow::Result<()> {
                     eprintln!("response incomplete: {reason}");
                 }
 
-                let reply = extract_reply(&response);
-                if reply.is_empty() {
-                    eprintln!("(no visible output — model may have spent all tokens on reasoning)");
-                } else {
-                    println!("\nassistant: {reply}\n");
+                match extract_reply(&response) {
+                    Some(reply) => println!("\nassistant: {reply}\n"),
+                    None => {
+                        if response.status != "incomplete" {
+                            let all_reasoning = response.usage.as_ref().is_some_and(|u| {
+                                let r = u
+                                    .output_tokens_details
+                                    .as_ref()
+                                    .map(|d| d.reasoning_tokens)
+                                    .unwrap_or(0);
+                                r > 0 && u.output_tokens == r
+                            });
+                            if all_reasoning {
+                                eprintln!(
+                                    "(no visible output — model spent all output tokens on reasoning)"
+                                );
+                            } else {
+                                eprintln!("(no visible output)");
+                            }
+                        }
+                    }
                 }
 
                 if let Some(usage) = &response.usage {
