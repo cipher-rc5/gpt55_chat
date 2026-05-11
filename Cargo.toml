@@ -2,16 +2,26 @@
 name = "gpt55-chat"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Multi-turn chat CLI for the OpenAI/Azure Responses API with system prompt, rules, and function tools"
+repository = "https://github.com/cipher-rc5/gpt55_chat"
+keywords = ["openai", "azure", "responses-api", "chat", "cli"]
+rust-version = "1.85"
 
 [[bin]]
 name = "gpt55-chat"
 path = "src/main.rs"
 
+[lib]
+name = "gpt55_chat"
+path = "src/lib.rs"
+
 [dependencies]
 anyhow = "1.0.98"
 dotenvy = "0.15.7"
-reqwest = { version = "0.13.3", features = ["json"] }
+reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls"] }
 serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0"
 thiserror = "2.0.12"
 tokio = { version = "1.44.1", features = ["rt", "macros"] }
 
