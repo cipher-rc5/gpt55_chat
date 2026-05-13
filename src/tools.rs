@@ -3,6 +3,7 @@
 // reference: https://developers.openai.com/api/docs/api-reference/responses
 
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -12,22 +13,31 @@ use crate::types::{FunctionTool, Tool};
 
 const READ_FILE_MAX_BYTES: u64 = 64 * 1024;
 
-pub fn builtin_tools() -> Vec<Tool> {
-    vec![
-        Tool::Function(FunctionTool {
-            name: "get_time".into(),
-            description: "Return the current UTC time as ISO 8601 and Unix seconds.".into(),
-            parameters: json!({
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false,
-            }),
+/// Built-in function tools exposed to the model.
+///
+/// `get_time` is always returned. `read_file` is included only when
+/// `read_root_set` is `true`, which the caller derives from whether
+/// `OPENAI_TOOLS_READ_ROOT` is configured; without a sandbox root the
+/// tool would refuse at execution time, so it is not advertised at all.
+pub fn builtin_tools(read_root_set: bool) -> Vec<Tool> {
+    let mut tools = vec![Tool::Function(FunctionTool {
+        name: "get_time".into(),
+        description: "Return the current UTC time as ISO 8601 and Unix seconds.".into(),
+        parameters: json!({
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
         }),
-        Tool::Function(FunctionTool {
+    })];
+
+    if read_root_set {
+        tools.push(Tool::Function(FunctionTool {
             name: "read_file".into(),
             description: format!(
                 "Read a UTF-8 text file from the local filesystem (max {} bytes). \
-                 Returns the contents on success.",
+                 Path is resolved relative to the process working directory, then \
+                 canonicalised and verified to lie inside OPENAI_TOOLS_READ_ROOT; \
+                 absolute paths under the sandbox also work.",
                 READ_FILE_MAX_BYTES
             ),
             parameters: json!({
@@ -41,8 +51,10 @@ pub fn builtin_tools() -> Vec<Tool> {
                 "required": ["path"],
                 "additionalProperties": false,
             }),
-        }),
-    ]
+        }));
+    }
+
+    tools
 }
 
 /// Execute a tool by name with raw JSON arguments. Always returns a JSON string
@@ -98,10 +110,10 @@ fn read_file(args: &Value, read_root: Option<&Path>) -> Result<Value, String> {
         "read_file disabled: set OPENAI_TOOLS_READ_ROOT to a directory to enable".to_string()
     })?;
 
-    let canonical_root = fs::canonicalize(root)
-        .map_err(|e| format!("read_root canonicalize failed: {e}"))?;
-    let canonical_path = fs::canonicalize(Path::new(path))
-        .map_err(|e| format!("path canonicalize failed: {e}"))?;
+    let canonical_root =
+        fs::canonicalize(root).map_err(|e| format!("read_root canonicalize failed: {e}"))?;
+    let canonical_path =
+        fs::canonicalize(Path::new(path)).map_err(|e| format!("path canonicalize failed: {e}"))?;
 
     if !canonical_path.starts_with(&canonical_root) {
         return Err(format!(
@@ -109,7 +121,8 @@ fn read_file(args: &Value, read_root: Option<&Path>) -> Result<Value, String> {
         ));
     }
 
-    let meta = fs::metadata(&canonical_path).map_err(|e| format!("stat failed: {e}"))?;
+    let f = fs::File::open(&canonical_path).map_err(|e| format!("open failed: {e}"))?;
+    let meta = f.metadata().map_err(|e| format!("stat failed: {e}"))?;
     if !meta.is_file() {
         return Err(format!("not a regular file: {path}"));
     }
@@ -120,9 +133,11 @@ fn read_file(args: &Value, read_root: Option<&Path>) -> Result<Value, String> {
             READ_FILE_MAX_BYTES
         ));
     }
+    let mut contents = String::with_capacity(meta.len() as usize);
+    f.take(READ_FILE_MAX_BYTES)
+        .read_to_string(&mut contents)
+        .map_err(|e| format!("read failed: {e}"))?;
 
-    let contents =
-        fs::read_to_string(&canonical_path).map_err(|e| format!("read failed: {e}"))?;
     Ok(json!({
         "path": path,
         "bytes": meta.len(),

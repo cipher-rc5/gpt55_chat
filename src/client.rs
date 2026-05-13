@@ -3,18 +3,38 @@
 // reference: https://developers.openai.com/api/docs/api-reference/responses
 
 use reqwest::Client;
+use reqwest::Url;
+use tokio::time::{Duration, sleep};
 
 use crate::tools;
 use crate::types::{
-    ChatError, ClientConfig, InputItem, MessageContent, OutputItem, ReasoningParams, Role,
-    ResponsesRequest, ResponsesResponse,
+    ChatError, ClientConfig, InputItem, LogLevel, MessageContent, OutputItem, Provider,
+    ReasoningParams, ResponsesRequest, ResponsesResponse, Role,
 };
 
 const MAX_TOOL_ROUNDTRIPS: usize = 8;
+const MAX_HTTP_ATTEMPTS: usize = 3;
+const RETRY_BASE_DELAY_MS: u64 = 100;
 
 /// Build the full request URL including the api-version query param.
-fn build_url(config: &ClientConfig) -> String {
-    format!("{}?api-version={}", config.endpoint, config.api_version)
+fn build_url(config: &ClientConfig) -> Result<Url, ChatError> {
+    let mut url = Url::parse(config.endpoint())
+        .map_err(|e| ChatError::Config(format!("configured endpoint URL is invalid: {e}")))?;
+    if url.query().is_some() {
+        return Err(ChatError::Config(
+            "configured endpoint URL must not contain query parameters".to_string(),
+        ));
+    }
+    if config.provider() == Provider::Azure {
+        if config.api_version().trim().is_empty() {
+            return Err(ChatError::Config(
+                "API_VERSION must not be empty".to_string(),
+            ));
+        }
+        url.query_pairs_mut()
+            .append_pair("api-version", config.api_version());
+    }
+    Ok(url)
 }
 
 /// Send a single request to the Responses API. Pass `previous_response_id`
@@ -25,41 +45,69 @@ pub async fn send_message(
     input: &[InputItem],
     previous_response_id: Option<&str>,
 ) -> Result<ResponsesResponse, ChatError> {
-    let url = build_url(config);
+    validate_capabilities(config, previous_response_id)?;
+    let url = build_url(config)?;
 
-    let reasoning = config.reasoning_effort.map(|effort| ReasoningParams {
+    let reasoning = config.reasoning_effort().map(|effort| ReasoningParams {
         effort,
-        summary: config.reasoning_summary,
+        summary: config.reasoning_summary(),
     });
 
     let request_body = ResponsesRequest {
-        model: &config.model,
+        model: config.model(),
         input,
-        max_output_tokens: config.max_output_tokens,
-        instructions: config.instructions.as_deref(),
-        tools: &config.tools,
+        max_output_tokens: config.max_output_tokens(),
+        instructions: config.instructions(),
+        tools: config.tools(),
         reasoning,
         previous_response_id,
     };
 
-    let response = http
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", config.api_key))
-        .header("api-key", &config.api_key)
-        .json(&request_body)
-        .send()
-        .await?;
+    for attempt in 1..=MAX_HTTP_ATTEMPTS {
+        let mut request = http
+            .post(url.clone())
+            .header("Content-Type", "application/json");
+        request = match config.provider() {
+            Provider::Azure => request.header("api-key", config.api_key()),
+            Provider::OpenAiCompatible => {
+                request.header("Authorization", format!("Bearer {}", config.api_key()))
+            }
+        };
 
-    let status = response.status().as_u16();
+        let response = match request.json(&request_body).send().await {
+            Ok(response) => response,
+            Err(e) if attempt < MAX_HTTP_ATTEMPTS => {
+                sleep(retry_delay(None, attempt)).await;
+                if config.log_level() == LogLevel::Verbose {
+                    eprintln!("[retry: transport error on attempt {attempt}: {e}]");
+                }
+                continue;
+            }
+            Err(e) => return Err(ChatError::Transport(e)),
+        };
 
-    if !response.status().is_success() {
-        let body = response.text().await.unwrap_or_else(|_| "<unreadable>".into());
+        let status = response.status().as_u16();
+        if response.status().is_success() {
+            return Ok(response.json::<ResponsesResponse>().await?);
+        }
+
+        if is_retryable_status(status) && attempt < MAX_HTTP_ATTEMPTS {
+            let delay = retry_delay(response.headers().get("retry-after"), attempt);
+            if config.log_level() == LogLevel::Verbose {
+                eprintln!("[retry: HTTP {status} on attempt {attempt}]");
+            }
+            sleep(delay).await;
+            continue;
+        }
+
+        let body = match response.text().await {
+            Ok(t) => t,
+            Err(e) => format!("<failed to read response body: {e}>"),
+        };
         return Err(ChatError::Http { status, body });
     }
 
-    let parsed = response.json::<ResponsesResponse>().await?;
-    Ok(parsed)
+    unreachable!("HTTP retry loop should return from every attempt")
 }
 
 /// Drive a full user turn: send the user message, then while the model
@@ -99,9 +147,14 @@ pub async fn run_turn(
         let next_id = response.id.clone();
         let mut next_input = Vec::with_capacity(calls.len());
         for (call_id, name, arguments) in calls {
-            let output = tools::execute(&name, &arguments, config.tools_read_root.as_deref());
-            let preview: String = output.chars().take(80).collect();
-            eprintln!("[tool: {name}({arguments}) → {preview}]");
+            let output = tools::execute(&name, &arguments, config.tools_read_root());
+            if config.log_level() == LogLevel::Verbose {
+                eprintln!(
+                    "[tool: {name} completed; args={} chars output={} chars]",
+                    arguments.chars().count(),
+                    output.chars().count()
+                );
+            }
             next_input.push(InputItem::FunctionCallOutput { call_id, output });
         }
 
@@ -118,15 +171,54 @@ pub async fn run_turn(
 /// item in the output array. Returns `None` when the result is empty (no
 /// message items, or all message items were empty / non-text).
 pub fn extract_reply(response: &ResponsesResponse) -> Option<String> {
-    let mut buf = String::new();
+    let mut messages = Vec::new();
     for item in &response.output {
         if let OutputItem::Message(msg) = item {
+            let mut buf = String::new();
             for content in &msg.content {
                 if let MessageContent::OutputText(text) = content {
                     buf.push_str(&text.text);
                 }
             }
+            if !buf.is_empty() {
+                messages.push(buf);
+            }
         }
     }
-    if buf.is_empty() { None } else { Some(buf) }
+    if messages.is_empty() {
+        None
+    } else {
+        Some(messages.join("\n\n"))
+    }
+}
+
+fn validate_capabilities(
+    config: &ClientConfig,
+    previous_response_id: Option<&str>,
+) -> Result<(), ChatError> {
+    if config.provider() == Provider::OpenAiCompatible && !config.api_version().trim().is_empty() {
+        return Err(ChatError::Config(
+            "API_VERSION is only used with the azure provider".to_string(),
+        ));
+    }
+    if previous_response_id.is_some() && config.model().trim().is_empty() {
+        return Err(ChatError::Config(
+            "response chaining requires a non-empty model".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn is_retryable_status(status: u16) -> bool {
+    status == 408 || status == 429 || (500..=599).contains(&status)
+}
+
+fn retry_delay(header: Option<&reqwest::header::HeaderValue>, attempt: usize) -> Duration {
+    if let Some(seconds) = header
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+    {
+        return Duration::from_secs(seconds.min(5));
+    }
+    Duration::from_millis(RETRY_BASE_DELAY_MS * attempt as u64)
 }

@@ -2,11 +2,11 @@
 name = "gpt55-chat"
 version = "0.1.0"
 edition = "2024"
-license = "MIT OR Apache-2.0"
-description = "Multi-turn chat CLI for the OpenAI/Azure Responses API with system prompt, rules, and function tools"
-repository = "https://github.com/cipher-rc5/gpt55_chat"
 keywords = ["openai", "azure", "responses-api", "chat", "cli"]
-rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cipher-rc5/gpt55_chat"
+rust-version = "1.93"
+description = "Multi-turn chat CLI for the OpenAI/Azure Responses API with system prompt, rules, and function tools"
 
 [[bin]]
 name = "gpt55-chat"
@@ -17,13 +17,17 @@ name = "gpt55_chat"
 path = "src/lib.rs"
 
 [dependencies]
-anyhow = "1.0.98"
-dotenvy = "0.15.7"
-reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls"] }
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0"
-thiserror = "2.0.12"
-tokio = { version = "1.44.1", features = ["rt", "macros"] }
+anyhow = "=1.0.102"
+base64 = "=0.22.1"
+dotenvy = "=0.15.7"
+reqwest = { version = "=0.13.3", default-features = false, features = ["json", "rustls"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.149"
+thiserror = "=2.0.18"
+tokio = { version = "=1.52.3", features = ["rt", "macros", "time"] }
+
+[dev-dependencies]
+wiremock = "0.6"
 
 [profile.release]
 lto = "fat"
