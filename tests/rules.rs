@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use gpt55_chat::config::{compose_instructions, load_rules};
+use gpt55_chat::types::ChatError;
 
 struct TempFile {
     path: PathBuf,
@@ -84,4 +85,25 @@ fn compose_system_prompt_and_rules() {
         compose_instructions(Some("hi".into()), vec!["a".into()]),
         Some("hi\n\n# Rules\n- a\n".into())
     );
+}
+
+#[test]
+fn compose_whitespace_only_system_prompt() {
+    assert_eq!(compose_instructions(Some("   \t\n  ".into()), vec![]), None);
+}
+
+#[test]
+fn load_rules_nonexistent_path_returns_config_error() {
+    let bogus = "/nonexistent/path/that/should/not/exist.txt";
+    let err = load_rules(bogus).expect_err("expected error for missing path");
+    match err {
+        ChatError::Config(msg) => {
+            assert!(
+                msg.contains("failed to read rules file"),
+                "missing prefix in: {msg}"
+            );
+            assert!(msg.contains(bogus), "missing path in: {msg}");
+        }
+        other => panic!("expected ChatError::Config, got: {other:?}"),
+    }
 }
