@@ -72,6 +72,13 @@ impl ImageRequest {
         self.output_format = value.into();
         self
     }
+
+    /// Override the compression level for lossy output formats (0..=100).
+    /// Pass `None` to omit the field entirely.
+    pub fn output_compression(mut self, value: Option<u32>) -> Self {
+        self.output_compression = value;
+        self
+    }
 }
 
 #[derive(Serialize)]
@@ -122,8 +129,7 @@ pub async fn generate(
     }
     let deployment = config.image_deployment().ok_or_else(|| {
         ChatError::Config(
-            "image generation disabled: set AZURE_IMAGE_DEPLOYMENT to a deployment name"
-                .to_owned(),
+            "image generation disabled: set AZURE_IMAGE_DEPLOYMENT to a deployment name".to_owned(),
         )
     })?;
 

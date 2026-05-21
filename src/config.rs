@@ -1,4 +1,4 @@
-// file: rust/src/config.rs
+// file: src/config.rs
 // description: loads and validates ClientConfig from environment variables
 // reference: https://docs.rs/dotenvy/latest/dotenvy/
 

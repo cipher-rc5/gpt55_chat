@@ -2,16 +2,15 @@
 # https://embarkstudios.github.io/cargo-deny/
 
 [licenses]
+# Licenses actually encountered in the current dependency graph.
+# Re-run `cargo deny check licenses` whenever dependencies change and update
+# this list rather than carrying speculative pre-approvals.
 allow = [
     "MIT",
     "Apache-2.0",
-    "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
-    "Zlib",
-    "MPL-2.0",
     # Transitive through rustls-platform-verifier/webpki-root-certs.
     "CDLA-Permissive-2.0",
 ]

@@ -1,4 +1,4 @@
-// file: rust/src/lib.rs
+// file: src/lib.rs
 // description: library crate exposing internal modules for integration tests
 
 //! `gpt55_chat` is a small client library for the OpenAI/Azure Responses API
@@ -20,6 +20,8 @@
 //! binary; the public API is not yet semver-stable and may change without
 //! notice.
 
+/// Pure parsers for the interactive REPL's slash commands.
+pub mod cli;
 /// Async HTTP client for the Responses API and the tool-roundtrip loop.
 pub mod client;
 /// Environment-driven configuration loader for the chat client.

@@ -99,9 +99,14 @@ pub async fn convert(
 }
 
 fn read_png_as_data_url(png_path: &Path) -> Result<String, ChatError> {
+    use std::io::Read;
+
     let canonical = std::fs::canonicalize(png_path)
         .map_err(|e| ChatError::Config(format!("PNG path canonicalize failed: {e}")))?;
-    let meta = std::fs::metadata(&canonical)
+    let file = std::fs::File::open(&canonical)
+        .map_err(|e| ChatError::Config(format!("PNG open failed: {e}")))?;
+    let meta = file
+        .metadata()
         .map_err(|e| ChatError::Config(format!("PNG stat failed: {e}")))?;
     if !meta.is_file() {
         return Err(ChatError::Config(format!(
@@ -115,7 +120,9 @@ fn read_png_as_data_url(png_path: &Path) -> Result<String, ChatError> {
             meta.len()
         )));
     }
-    let bytes = std::fs::read(&canonical)
+    let mut bytes = Vec::with_capacity(meta.len() as usize);
+    file.take(MAX_INPUT_PNG_BYTES)
+        .read_to_end(&mut bytes)
         .map_err(|e| ChatError::Config(format!("PNG read failed: {e}")))?;
     let mime = match canonical
         .extension()

@@ -1,4 +1,4 @@
-// file: rust/src/tools.rs
+// file: src/tools.rs
 // description: built-in function tools exposed to the model
 // reference: https://developers.openai.com/api/docs/api-reference/responses
 
@@ -147,6 +147,12 @@ fn read_file(args: &Value, read_root: Option<&Path>) -> Result<Value, String> {
 
 /// Format Unix seconds as `YYYY-MM-DDTHH:MM:SSZ` using Howard Hinnant's
 /// civil_from_days algorithm. Valid for any year in i64 range.
+///
+/// ```
+/// use gpt55_chat::tools::format_utc;
+/// assert_eq!(format_utc(0), "1970-01-01T00:00:00Z");
+/// assert_eq!(format_utc(1_700_000_000), "2023-11-14T22:13:20Z");
+/// ```
 pub fn format_utc(unix_secs: u64) -> String {
     let secs = unix_secs.min(i64::MAX as u64) as i64;
     let days = secs.div_euclid(86400);

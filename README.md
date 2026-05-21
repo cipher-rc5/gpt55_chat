@@ -177,6 +177,19 @@ AZURE_IMAGE_API_VERSION=2024-02-01
 OPENAI_IMAGE_OUT_DIR=./images
 ```
 
+## Library API stability
+
+The `gpt55_chat` library crate is published primarily as the engine for the
+bundled binary. Until 1.0, the public Rust API may change between minor
+versions; pin to an exact version in `Cargo.toml` if you depend on it. The
+binary's CLI surface (slash commands, env vars, exit codes) follows
+semver-conventional change tracking in `CHANGELOG.md`.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for the supported-versions table and the
+private vulnerability-reporting process.
+
 ## License
 
 Dual-licensed under MIT or Apache-2.0.

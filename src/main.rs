@@ -1,17 +1,22 @@
-// file: rust/src/main.rs
+// file: src/main.rs
 // description: multi-turn chat CLI entry point using the Responses API
 // reference: https://docs.rs/tokio/latest/tokio/
 
 use std::io::{self, BufRead, Write};
-use std::path::PathBuf;
 
 use reqwest::Client;
 
+use gpt55_chat::cli::{
+    ImageArgs, PromptSource, SlashCommand, SvgArgs, classify_prompt, classify_slash,
+    parse_image_args, parse_svg_args, truncate_for_display,
+};
 use gpt55_chat::client::{extract_reply, run_turn};
 use gpt55_chat::config::load_config;
 use gpt55_chat::image::{ImageRequest, generate as generate_image};
-use gpt55_chat::svg::{SvgStyle, convert as convert_svg};
+use gpt55_chat::svg::convert as convert_svg;
 use gpt55_chat::types::{ChatError, ClientConfig, LogLevel, Tool};
+
+const ERROR_BODY_DISPLAY_CHARS: usize = 256;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
@@ -44,11 +49,7 @@ async fn main() -> anyhow::Result<()> {
         None => "none".to_string(),
     };
     let media_label = match config.image_deployment() {
-        Some(name) => format!(
-            "{} -> {}",
-            name,
-            config.image_out_dir().display()
-        ),
+        Some(name) => format!("{} -> {}", name, config.image_out_dir().display()),
         None => "off".to_string(),
     };
 
@@ -94,70 +95,36 @@ async fn main() -> anyhow::Result<()> {
         }
 
         if user_input.starts_with('/') {
-            match handle_slash_command(&http, &config, &user_input, &mut stdin).await {
-                Ok(SlashOutcome::Handled) => {}
-                Ok(SlashOutcome::Help) => print_help(),
-                Err(e) => eprintln!("error: {e}"),
+            if let Err(e) = dispatch_slash(&http, &config, &user_input, &mut stdin).await {
+                eprintln!("error: {e}");
             }
             continue;
         }
 
-        match run_turn(&http, &config, &user_input, previous_response_id.as_deref()).await {
-            Ok(response) => {
-                if response.status == "incomplete" {
-                    let reason = response
-                        .incomplete_details
-                        .as_ref()
-                        .map(|d| d.reason.as_str())
-                        .unwrap_or("unknown");
-                    eprintln!("response incomplete: {reason}");
+        // Cancel the in-flight turn on ctrl-c so the user can recover the prompt
+        // without waiting for the HTTP timeout. SIGINT outside this scope falls
+        // through to the default handler (process exit).
+        let turn = run_turn(&http, &config, &user_input, previous_response_id.as_deref());
+        tokio::select! {
+            outcome = turn => match outcome {
+                Ok(response) => {
+                    handle_response(&config, response, &mut previous_response_id);
                 }
-
-                match extract_reply(&response) {
-                    Some(reply) => println!("\nassistant: {reply}\n"),
-                    None => {
-                        if response.status != "incomplete" {
-                            let all_reasoning = response.usage.as_ref().is_some_and(|u| {
-                                let r = u
-                                    .output_tokens_details
-                                    .as_ref()
-                                    .map(|d| d.reasoning_tokens)
-                                    .unwrap_or(0);
-                                r > 0 && u.output_tokens == r
-                            });
-                            if all_reasoning {
-                                eprintln!(
-                                    "(no visible output — model spent all output tokens on reasoning)"
-                                );
-                            } else {
-                                eprintln!("(no visible output)");
-                            }
-                        }
-                    }
+                Err(ChatError::Http { status, body }) => {
+                    let display = if config.log_level() == LogLevel::Verbose {
+                        body
+                    } else {
+                        truncate_for_display(&body, ERROR_BODY_DISPLAY_CHARS)
+                    };
+                    eprintln!("api error {status}: {display}");
+                    previous_response_id = None;
                 }
-
-                if config.log_level() != LogLevel::Quiet
-                    && let Some(usage) = &response.usage
-                {
-                    let r = usage
-                        .output_tokens_details
-                        .as_ref()
-                        .map(|d| d.reasoning_tokens)
-                        .unwrap_or(0);
-                    eprintln!(
-                        "[tokens: in={} out={} reasoning={} total={}]",
-                        usage.input_tokens, usage.output_tokens, r, usage.total_tokens
-                    );
+                Err(e) => {
+                    eprintln!("error: {e}");
                 }
-
-                previous_response_id = Some(response.id);
-            }
-            Err(ChatError::Http { status, body }) => {
-                eprintln!("api error {status}: {body}");
-                previous_response_id = None;
-            }
-            Err(e) => {
-                eprintln!("error: {e}");
+            },
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("\n(interrupted; returning to prompt)");
             }
         }
     }
@@ -165,34 +132,73 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-enum SlashOutcome {
-    Handled,
-    Help,
+fn handle_response(
+    config: &ClientConfig,
+    response: gpt55_chat::types::ResponsesResponse,
+    previous_response_id: &mut Option<String>,
+) {
+    if response.status == "incomplete" {
+        let reason = response
+            .incomplete_details
+            .as_ref()
+            .map(|d| d.reason.as_str())
+            .unwrap_or("unknown");
+        eprintln!("response incomplete: {reason}");
+    }
+
+    match extract_reply(&response) {
+        Some(reply) => println!("\nassistant: {reply}\n"),
+        None => {
+            if response.status != "incomplete" {
+                let all_reasoning = response.usage.as_ref().is_some_and(|u| {
+                    let r = u
+                        .output_tokens_details
+                        .as_ref()
+                        .map(|d| d.reasoning_tokens)
+                        .unwrap_or(0);
+                    r > 0 && u.output_tokens == r
+                });
+                if all_reasoning {
+                    eprintln!("(no visible output — model spent all output tokens on reasoning)");
+                } else {
+                    eprintln!("(no visible output)");
+                }
+            }
+        }
+    }
+
+    if config.log_level() != LogLevel::Quiet
+        && let Some(usage) = &response.usage
+    {
+        let r = usage
+            .output_tokens_details
+            .as_ref()
+            .map(|d| d.reasoning_tokens)
+            .unwrap_or(0);
+        eprintln!(
+            "[tokens: in={} out={} reasoning={} total={}]",
+            usage.input_tokens, usage.output_tokens, r, usage.total_tokens
+        );
+    }
+
+    *previous_response_id = Some(response.id);
 }
 
-async fn handle_slash_command(
+async fn dispatch_slash(
     http: &Client,
     config: &ClientConfig,
     raw: &str,
     stdin: &mut impl BufRead,
-) -> anyhow::Result<SlashOutcome> {
-    let (cmd, rest) = match raw.split_once(char::is_whitespace) {
-        Some((c, r)) => (c, r.trim()),
-        None => (raw, ""),
-    };
-
-    match cmd {
-        "/help" | "/?" => Ok(SlashOutcome::Help),
-        "/image" => {
-            handle_image(http, config, rest, stdin).await?;
-            Ok(SlashOutcome::Handled)
+) -> anyhow::Result<()> {
+    match classify_slash(raw) {
+        SlashCommand::Help => {
+            print_help();
+            Ok(())
         }
-        "/svg" => {
-            handle_svg(http, config, rest).await?;
-            Ok(SlashOutcome::Handled)
-        }
-        other => Err(anyhow::anyhow!(
-            "unknown command '{other}' — type /help to list commands"
+        SlashCommand::Image { rest } => handle_image(http, config, rest, stdin).await,
+        SlashCommand::Svg { rest } => handle_svg(http, config, rest).await,
+        SlashCommand::Unknown { name } => Err(anyhow::anyhow!(
+            "unknown command '{name}' — type /help to list commands"
         )),
     }
 }
@@ -213,43 +219,21 @@ async fn handle_image(
     rest: &str,
     stdin: &mut impl BufRead,
 ) -> anyhow::Result<()> {
-    let mut tokens = rest.split_whitespace().peekable();
-    let mut size: Option<String> = None;
-    let mut quality: Option<String> = None;
-    let mut n: Option<u32> = None;
-    let mut format: Option<String> = None;
+    let ImageArgs {
+        size,
+        quality,
+        n,
+        format,
+        remainder,
+    } = parse_image_args(rest).map_err(|e| anyhow::anyhow!(e))?;
 
-    while let Some(tok) = tokens.peek().copied() {
-        if let Some(value) = tok.strip_prefix("--size=") {
-            size = Some(value.to_owned());
-        } else if let Some(value) = tok.strip_prefix("--quality=") {
-            quality = Some(value.to_owned());
-        } else if let Some(value) = tok.strip_prefix("--n=") {
-            n = Some(
-                value
-                    .parse::<u32>()
-                    .map_err(|_| anyhow::anyhow!("--n must be a positive integer"))?,
-            );
-        } else if let Some(value) = tok.strip_prefix("--format=") {
-            format = Some(value.to_owned());
-        } else if tok.starts_with("--") {
-            return Err(anyhow::anyhow!("unknown flag '{tok}'"));
-        } else {
-            break;
-        }
-        tokens.next();
-    }
-
-    let remainder: String = tokens.collect::<Vec<_>>().join(" ");
-    let prompt = if remainder.is_empty() {
-        read_multiline_prompt(stdin)?
-    } else if let Some(path) = remainder.strip_prefix('@') {
-        std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("failed to read prompt file '{path}': {e}"))?
+    let prompt = match classify_prompt(&remainder) {
+        PromptSource::MultiLine => read_multiline_prompt(stdin)?,
+        PromptSource::File(path) => std::fs::read_to_string(&path)
+            .map_err(|e| anyhow::anyhow!("failed to read prompt file '{}': {e}", path.display()))?
             .trim()
-            .to_owned()
-    } else {
-        remainder
+            .to_owned(),
+        PromptSource::Inline(text) => text,
     };
 
     if prompt.is_empty() {
@@ -281,34 +265,14 @@ async fn handle_image(
     Ok(())
 }
 
-async fn handle_svg(
-    http: &Client,
-    config: &ClientConfig,
-    rest: &str,
-) -> anyhow::Result<()> {
-    let mut tokens = rest.split_whitespace().peekable();
-    let mut style = SvgStyle::Combined;
-    while let Some(tok) = tokens.peek().copied() {
-        if let Some(value) = tok.strip_prefix("--style=") {
-            style = SvgStyle::parse(value).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "--style must be one of editable|fidelity|compact|combined (got '{value}')"
-                )
-            })?;
-        } else if tok.starts_with("--") {
-            return Err(anyhow::anyhow!("unknown flag '{tok}'"));
-        } else {
-            break;
-        }
-        tokens.next();
-    }
-    let path_str = tokens.collect::<Vec<_>>().join(" ");
-    if path_str.is_empty() {
-        return Err(anyhow::anyhow!("usage: /svg [--style=...] <png-path>"));
-    }
-    let png_path = PathBuf::from(path_str);
-    eprintln!("[converting {} → SVG using style={:?}…]", png_path.display(), style);
-    let written = convert_svg(http, config, &png_path, style).await?;
+async fn handle_svg(http: &Client, config: &ClientConfig, rest: &str) -> anyhow::Result<()> {
+    let SvgArgs { style, path } = parse_svg_args(rest).map_err(|e| anyhow::anyhow!(e))?;
+    eprintln!(
+        "[converting {} → SVG using style={:?}…]",
+        path.display(),
+        style
+    );
+    let written = convert_svg(http, config, &path, style).await?;
     println!("wrote {}", written.display());
     Ok(())
 }
