@@ -10,6 +10,10 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     name: check / fmt / clippy / test / doc
@@ -23,7 +27,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.100
+        uses: dtolnay/rust-toolchain@1.95
         with:
           components: clippy, rustfmt
 
@@ -48,14 +52,14 @@ jobs:
         run: cargo doc --no-deps
 
   msrv:
-    name: msrv (1.93)
+    name: msrv (1.95)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install Rust 1.93
-        uses: dtolnay/rust-toolchain@1.100
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@1.95
 
       - name: Cache cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
@@ -74,7 +78,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.100
+        uses: dtolnay/rust-toolchain@1.95
 
       - name: Cache cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
@@ -83,7 +87,7 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Audit
-        run: cargo audit
+        run: cargo audit --deny warnings
 
   deny:
     name: deny
@@ -93,7 +97,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.100
+        uses: dtolnay/rust-toolchain@1.95
 
       - name: Cache cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
@@ -111,8 +115,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install Rust 1.93
-        uses: dtolnay/rust-toolchain@1.100
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@1.95
         with:
           components: llvm-tools-preview
 
@@ -130,3 +134,12 @@ jobs:
         with:
           name: lcov.info
           path: lcov.info
+
+      - name: Upload to Codecov
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

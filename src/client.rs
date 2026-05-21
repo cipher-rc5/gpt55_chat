@@ -1,4 +1,4 @@
-// file: rust/src/client.rs
+// file: src/client.rs
 // description: async HTTP client for the OpenAI/Azure Responses API
 // reference: https://developers.openai.com/api/docs/api-reference/responses
 
@@ -170,6 +170,30 @@ pub async fn run_turn(
 /// Concatenate all `output_text` fragments across every assistant `Message`
 /// item in the output array. Returns `None` when the result is empty (no
 /// message items, or all message items were empty / non-text).
+///
+/// ```
+/// use gpt55_chat::client::extract_reply;
+/// use gpt55_chat::types::{
+///     MessageContent, MessageOutput, OutputItem, OutputTextContent,
+///     ResponsesResponse, Role,
+/// };
+///
+/// let response = ResponsesResponse {
+///     id: "resp_1".into(),
+///     status: "completed".into(),
+///     model: "test".into(),
+///     output: vec![OutputItem::Message(MessageOutput {
+///         id: "m1".into(),
+///         role: Role::Assistant,
+///         content: vec![MessageContent::OutputText(OutputTextContent {
+///             text: "hello".into(),
+///         })],
+///     })],
+///     usage: None,
+///     incomplete_details: None,
+/// };
+/// assert_eq!(extract_reply(&response).as_deref(), Some("hello"));
+/// ```
 pub fn extract_reply(response: &ResponsesResponse) -> Option<String> {
     let mut messages = Vec::new();
     for item in &response.output {

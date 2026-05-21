@@ -1,4 +1,4 @@
-// file: rust/src/types.rs
+// file: src/types.rs
 // description: domain types for the OpenAI/Azure Responses API
 // reference: https://developers.openai.com/api/docs/api-reference/responses
 
@@ -12,16 +12,22 @@ use thiserror::Error;
 /// Author role for a chat message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum Role {
     User,
     Assistant,
     System,
     Developer,
+    /// Any role the client does not recognise (e.g. `tool`, future API additions).
+    /// Falls back to this variant instead of failing JSON deserialisation.
+    #[serde(other)]
+    Other,
 }
 
 /// Reasoning effort level requested from the model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ReasoningEffort {
     None,
     Minimal,
@@ -61,6 +67,7 @@ impl ReasoningEffort {
 /// Verbosity of the reasoning summary returned to the client.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ReasoningSummary {
     Auto,
     Concise,
@@ -79,7 +86,6 @@ impl ReasoningSummary {
     }
 
     /// Lowercase string label for this variant.
-    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Auto => "auto",
@@ -184,26 +190,21 @@ pub enum MessageContent {
 #[derive(Debug, Deserialize)]
 pub struct ReasoningSummaryItem {
     #[serde(default)]
-    #[allow(dead_code)]
     pub text: String,
 }
 
 /// A `reasoning` item in the model's `output` array.
 #[derive(Debug, Deserialize)]
 pub struct ReasoningOutput {
-    #[allow(dead_code)]
     pub id: String,
     #[serde(default)]
-    #[allow(dead_code)]
     pub summary: Vec<ReasoningSummaryItem>,
 }
 
 /// A `message` item in the model's `output` array.
 #[derive(Debug, Deserialize)]
 pub struct MessageOutput {
-    #[allow(dead_code)]
     pub id: String,
-    #[allow(dead_code)]
     pub role: Role,
     #[serde(default)]
     pub content: Vec<MessageContent>,
@@ -212,7 +213,6 @@ pub struct MessageOutput {
 /// A `function_call` item in the model's `output` array.
 #[derive(Debug, Deserialize)]
 pub struct FunctionCall {
-    #[allow(dead_code)]
     pub id: String,
     pub call_id: String,
     pub name: String,
@@ -225,7 +225,7 @@ pub struct FunctionCall {
 #[non_exhaustive]
 pub enum OutputItem {
     /// A reasoning trace item.
-    Reasoning(#[allow(dead_code)] ReasoningOutput),
+    Reasoning(ReasoningOutput),
     /// An assistant message item.
     Message(MessageOutput),
     /// A function-call request from the model.
@@ -263,7 +263,6 @@ pub struct IncompleteDetails {
 pub struct ResponsesResponse {
     pub id: String,
     pub status: String,
-    #[allow(dead_code)]
     pub model: String,
     #[serde(default)]
     pub output: Vec<OutputItem>,
@@ -277,6 +276,7 @@ pub struct ResponsesResponse {
 
 /// API provider/auth mode used to build request URLs and headers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Provider {
     /// Azure OpenAI endpoint using the `api-key` header and `api-version` query parameter.
     Azure,
@@ -305,6 +305,7 @@ impl Provider {
 
 /// Runtime diagnostic verbosity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LogLevel {
     /// Suppress startup/token/tool diagnostics; keep user-facing replies and errors.
     Quiet,
@@ -476,6 +477,12 @@ pub struct ClientConfigBuilder {
     image_out_dir: Option<std::path::PathBuf>,
 }
 
+fn missing_field(name: &str) -> ChatError {
+    ChatError::Config(format!(
+        "ClientConfigBuilder missing required field: {name}"
+    ))
+}
+
 impl ClientConfigBuilder {
     /// Create a new empty builder with all fields unset.
     pub fn new() -> Self {
@@ -580,33 +587,13 @@ impl ClientConfigBuilder {
 
     /// Consume the builder and produce a `ClientConfig`, or fail if a required field is missing.
     pub fn build(self) -> Result<ClientConfig, ChatError> {
-        let endpoint = self.endpoint.ok_or_else(|| {
-            ChatError::Config(format!(
-                "ClientConfigBuilder missing required field: {name}",
-                name = "endpoint"
-            ))
-        })?;
-        let api_key = self.api_key.ok_or_else(|| {
-            ChatError::Config(format!(
-                "ClientConfigBuilder missing required field: {name}",
-                name = "api_key"
-            ))
-        })?;
-        let model = self.model.ok_or_else(|| {
-            ChatError::Config(format!(
-                "ClientConfigBuilder missing required field: {name}",
-                name = "model"
-            ))
-        })?;
+        let endpoint = self.endpoint.ok_or_else(|| missing_field("endpoint"))?;
+        let api_key = self.api_key.ok_or_else(|| missing_field("api_key"))?;
+        let model = self.model.ok_or_else(|| missing_field("model"))?;
         let provider = self.provider.unwrap_or(Provider::Azure);
         let api_version = match (provider, self.api_version) {
             (Provider::Azure, Some(value)) => value,
-            (Provider::Azure, None) => {
-                return Err(ChatError::Config(format!(
-                    "ClientConfigBuilder missing required field: {name}",
-                    name = "api_version"
-                )));
-            }
+            (Provider::Azure, None) => return Err(missing_field("api_version")),
             (Provider::OpenAiCompatible, Some(value)) => value,
             (Provider::OpenAiCompatible, None) => String::new(),
         };
@@ -639,6 +626,7 @@ impl ClientConfigBuilder {
 
 /// Error type for all chat client operations.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ChatError {
     #[error("HTTP error {status}: {body}")]
     Http { status: u16, body: String },
