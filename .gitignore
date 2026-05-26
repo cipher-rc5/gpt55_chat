@@ -69,3 +69,6 @@ tmp/
 .direnv/
 .envrc.local
 node_modules/
+
+# ---- Internal review notes (kept local only) ----
+_dev/
