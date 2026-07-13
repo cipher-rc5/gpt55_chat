@@ -1,0 +1,36 @@
+# Betterleaks configuration — https://github.com/betterleaks/betterleaks
+# Secret-scanning to prevent accidental credential leakage.
+# Run locally:   betterleaks dir .            (scan working tree)
+#                betterleaks git .            (scan full git history)
+# Pre-commit:    betterleaks git --pre-commit --staged --redact --verbose
+
+# Start from the maintained default ruleset, then layer repo-specific tweaks.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for this repository"
+
+# Paths that never contain real secrets (samples, lockfiles, vendored data).
+paths = [
+  # Local secret files: gitignored and never committed, so scanning them only
+  # produces noise. The pre-commit / history scans never see them anyway.
+  '''(?:^|/)\.env$''',
+  '''(?:^|/)\.env\..*''',
+  '''(?:^|/)\.env\.example$''',
+  '''(?:^|/)\.env\.sample$''',
+  '''(?:^|/)Cargo\.lock$''',
+  '''(?:^|/)target/''',
+  '''(?:^|/)_dev/''',
+]
+
+# Values that are placeholders or documentation, not live credentials.
+regexes = [
+  # opencode {env:VAR} interpolation references — not the secret itself.
+  '''\{env:[A-Z0-9_]+\}''',
+  # Common placeholder tokens used in docs / examples.
+  '''(?i)(your[_-]?api[_-]?key|changeme|placeholder|example|xxxx+|<[a-z_]+>)''',
+]
+
+# Inline exceptions: add `# betterleaks:allow` on any line that is a known
+# false positive (gitleaks:allow is honored too).

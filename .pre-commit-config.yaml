@@ -1,0 +1,11 @@
+# Pre-commit hooks — https://pre-commit.com
+# Install the framework once:  pipx install pre-commit   (or: brew install pre-commit)
+# Enable in this repo:         pre-commit install
+#
+# If you prefer no framework, the repo also ships a native git hook at
+# .githooks/pre-commit — enable it with:  git config core.hooksPath .githooks
+repos:
+  - repo: https://github.com/betterleaks/betterleaks
+    rev: v1.6.1
+    hooks:
+      - id: betterleaks

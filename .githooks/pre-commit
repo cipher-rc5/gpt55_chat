@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Native git pre-commit hook — scans staged changes for secrets with betterleaks.
+# Enable once per clone:  git config core.hooksPath .githooks
+#
+# Bypass in an emergency:  git commit --no-verify   (avoid; prefer fixing the leak)
+set -euo pipefail
+
+if ! command -v betterleaks >/dev/null 2>&1; then
+  echo "warning: betterleaks not installed — skipping secret scan." >&2
+  echo "         install with 'brew install betterleaks' to enable leak protection." >&2
+  exit 0
+fi
+
+# Scan only what is staged for this commit; redact any matched secrets from output.
+if ! betterleaks git --pre-commit --staged --redact --no-banner; then
+  echo >&2
+  echo "betterleaks: potential secret detected in staged changes — commit aborted." >&2
+  echo "  • remove the secret, or" >&2
+  echo "  • add an inline '# betterleaks:allow' if it is a confirmed false positive, or" >&2
+  echo "  • adjust .betterleaks.toml allowlist." >&2
+  exit 1
+fi

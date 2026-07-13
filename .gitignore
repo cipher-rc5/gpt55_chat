@@ -19,6 +19,8 @@
 *.pfx
 secrets/
 credentials.json
+# local opencode provider config (may reference resource URLs / keys)
+opencode.json
 
 # ---- OS noise ----
 .DS_Store
