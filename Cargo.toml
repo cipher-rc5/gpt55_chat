@@ -5,7 +5,7 @@ edition = "2024"
 keywords = ["openai", "azure", "responses-api", "chat", "cli"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/cipher-rc5/gpt55_chat"
-rust-version = "1.96"
+rust-version = "1.97.1"
 description = "Multi-turn chat CLI for the OpenAI/Azure Responses API with system prompt, rules, and function tools"
 
 [[bin]]
