@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install Rust 1.95
-        uses: dtolnay/rust-toolchain@1.100
+        uses: dtolnay/rust-toolchain@1.120
         with:
           components: clippy, rustfmt
 
@@ -89,7 +89,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install Rust 1.95
-        uses: dtolnay/rust-toolchain@1.100
+        uses: dtolnay/rust-toolchain@1.120
         with:
           targets: ${{ matrix.target }}
 
