@@ -4,10 +4,10 @@ Thanks for your interest in contributing.
 
 ## Toolchain
 
-The project pins **Rust 1.98.1** via `rust-toolchain.toml` (also the
+The project pins **Rust 1.99.0** via `rust-toolchain.toml` (also the
 `rust-version` in `Cargo.toml`). If you use `rustup`, the correct toolchain is
 installed automatically the first time you run a `cargo` command in this
-directory. If you build outside `rustup`, install 1.98.1 manually.
+directory. If you build outside `rustup`, install 1.99.0 manually.
 
 `just` recipes always run the pinned toolchain, even when another Rust install
 (such as Homebrew's `rust`) comes earlier on `PATH`. Bare `cargo` commands use

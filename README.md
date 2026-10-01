@@ -27,7 +27,7 @@ Each release also carries a combined `SHA256SUMS` file and a CycloneDX SBOM
 (`gpt55-chat-${VERSION}.cdx.json`).
 
 Windows binaries are not published. On Windows, or any other platform, build
-from source (requires Rust 1.98.1 or newer):
+from source (requires Rust 1.99.0 or newer):
 
 ```sh
 cargo install --git https://github.com/cipher-rc5/gpt55_chat --locked

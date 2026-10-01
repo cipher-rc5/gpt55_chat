@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CycloneDX SBOM.
 
 ### Changed
-- Toolchain pinned to Rust **1.98.1**, the latest stable release (was 1.93);
+- Toolchain pinned to Rust **1.99.0**, the latest stable release (was 1.93);
   `rust-version` raised to match. The `justfile` puts the pinned toolchain
   first on `PATH`, so another Rust install (such as Homebrew's `rust`) cannot
   silently replace it.
@@ -45,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `deny.toml` allowlist trimmed to the licenses actually encountered.
 - Dependencies refreshed to their latest releases: every direct dependency is
   on its newest crates.io version, and `Cargo.lock` is re-resolved for Rust
-  1.98.1 (25 transitive updates).
+  1.99.0 (25 transitive updates).
 
 ### Removed
 - GitHub Actions workflows (CI, Release, Secret Scan); CI/CD now runs locally.
@@ -59,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Stale `// file: rust/src/…` headers across 6 source files now reference the
   correct `src/…` paths.
+- `Cargo.lock` no longer resolves the yanked `yoke-derive` 0.8.3 (now
+  0.8.4), so `cargo audit --deny warnings` passes.
 
 ## [0.1.0] - 2026-05-21
 
