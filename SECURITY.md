@@ -37,7 +37,8 @@ In scope:
 - Vulnerabilities introduced via third-party dependencies that affect this
   crate's runtime behavior. Please file these with the upstream first when
   possible.
-- Issues in the release artefacts (signed binaries, SHA256 sums, attestation).
+- Issues in the release artefacts (archives, SHA256 sums, SBOM) or in the
+  local release recipes in the `justfile`.
 
 Out of scope:
 

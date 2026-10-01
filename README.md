@@ -7,12 +7,15 @@ set of built-in function tools.
 
 ## Installation
 
-Download the archive for your target from the GitHub release, verify it, then
-install the binary somewhere on your `PATH`.
+Prebuilt archives are published on GitHub Releases for macOS
+(`aarch64-apple-darwin`, `x86_64-apple-darwin`) and Linux
+(`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`; glibc 2.28 or newer).
+Download the archive for your target, verify it, then install the binary
+somewhere on your `PATH`.
 
 ```sh
 VERSION=0.1.0
-TARGET=x86_64-unknown-linux-gnu
+TARGET=x86_64-unknown-linux-gnu   # or one of the other three targets above
 curl -LO "https://github.com/cipher-rc5/gpt55_chat/releases/download/v${VERSION}/gpt55-chat-${VERSION}-${TARGET}.tar.gz"
 curl -LO "https://github.com/cipher-rc5/gpt55_chat/releases/download/v${VERSION}/gpt55-chat-${VERSION}-${TARGET}.sha256"
 shasum -a 256 -c "gpt55-chat-${VERSION}-${TARGET}.sha256"
@@ -20,8 +23,15 @@ tar -xzf "gpt55-chat-${VERSION}-${TARGET}.tar.gz"
 install "gpt55-chat-${VERSION}-${TARGET}/gpt55-chat" /usr/local/bin/gpt55-chat
 ```
 
-Windows releases are shipped as `.zip` archives. Verify the SHA256 entry before
-adding `gpt55-chat.exe` to your `PATH`.
+Each release also carries a combined `SHA256SUMS` file and a CycloneDX SBOM
+(`gpt55-chat-${VERSION}.cdx.json`).
+
+Windows binaries are not published. On Windows, or any other platform, build
+from source (requires Rust 1.98.1 or newer):
+
+```sh
+cargo install --git https://github.com/cipher-rc5/gpt55_chat --locked
+```
 
 ## Quick start
 
@@ -176,6 +186,12 @@ AZURE_IMAGE_DEPLOYMENT=gpt-image-2
 AZURE_IMAGE_API_VERSION=2024-02-01
 OPENAI_IMAGE_OUT_DIR=./images
 ```
+
+## Development
+
+CI runs locally: `just ci` runs the full gate, and `just hooks` enables the
+pre-commit and pre-push hooks. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+tool list and the release process.
 
 ## Library API stability
 

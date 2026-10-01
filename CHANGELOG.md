@@ -17,13 +17,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Property-based tests for `tools::format_utc` (year-range bounds and
   monotonicity).
 - Criterion benches for `tools::format_utc` and `client::extract_reply`.
-- CycloneDX SBOM artefact in the release workflow.
-- Release workflow now re-runs `cargo fmt --check`, `cargo clippy`,
-  `cargo audit`, and `cargo deny check` before building artefacts.
-- Release matrix now covers `aarch64-apple-darwin` and `aarch64-unknown-linux-gnu`.
+- Local CI/CD via a `justfile`: `just ci` (fmt, check, clippy, tests,
+  doctests, rustdoc, `cargo audit`, `cargo deny`, betterleaks history scan),
+  `just precommit`, `just hooks`, `just update`, `just release-build`, and
+  `just release-publish`.
+- `.githooks/pre-push` runs `just ci`; `.githooks/pre-commit` now runs
+  `just precommit` (rustfmt check plus a staged-change secret scan) and fails
+  when a required tool is missing instead of skipping the scan.
+- Release archives for `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+  `x86_64-unknown-linux-gnu`, and `aarch64-unknown-linux-gnu` (glibc 2.28+),
+  built locally, with per-archive SHA256 files, a combined `SHA256SUMS`, and a
+  CycloneDX SBOM.
 
 ### Changed
-- Toolchain pinned to Rust **1.95** (was 1.93).
+- Toolchain pinned to Rust **1.98.1**, the latest stable release (was 1.93);
+  `rust-version` raised to match. The `justfile` puts the pinned toolchain
+  first on `PATH`, so another Rust install (such as Homebrew's `rust`) cannot
+  silently replace it.
+- Benches use `std::hint::black_box` instead of the deprecated
+  `criterion::black_box`, so `-D warnings` builds of all targets pass.
 - Upstream HTTP error bodies are truncated to 256 chars at non-verbose log
   levels to prevent future server-echoed credentials from surfacing.
 - `Role`, `Provider`, `LogLevel`, `ReasoningEffort`, `ReasoningSummary`, and
@@ -31,6 +43,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variants via `#[serde(other)]` to avoid hard JSON decode failures.
 - `wiremock` dev-dependency now pinned to an exact version.
 - `deny.toml` allowlist trimmed to the licenses actually encountered.
+- Dependencies refreshed to their latest releases: every direct dependency is
+  on its newest crates.io version, and `Cargo.lock` is re-resolved for Rust
+  1.98.1 (25 transitive updates).
+
+### Removed
+- GitHub Actions workflows (CI, Release, Secret Scan); CI/CD now runs locally.
+- Dependabot version-update configuration; update dependencies with
+  `just update`.
+- `.pre-commit-config.yaml`; `.githooks/` is the single hook mechanism.
+- Windows (`x86_64-pc-windows-msvc`) release archives; Windows users build
+  from source.
+- GitHub build-provenance attestations for release artefacts.
 
 ### Fixed
 - Stale `// file: rust/src/…` headers across 6 source files now reference the

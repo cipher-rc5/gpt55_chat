@@ -1,7 +1,9 @@
 // file: benches/extract_reply.rs
 // description: criterion benchmark for client::extract_reply
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{Criterion, criterion_group, criterion_main};
 use gpt55_chat::client::extract_reply;
 use gpt55_chat::types::{
     MessageContent, MessageOutput, OutputItem, OutputTextContent, ResponsesResponse, Role,

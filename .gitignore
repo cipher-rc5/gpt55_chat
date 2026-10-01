@@ -2,6 +2,8 @@
 /target/
 **/*.rs.bk
 *.pdb
+# local release artefacts (just release-build)
+/dist/
 
 # Cargo lockfile policy:
 #   - keep Cargo.lock for binaries (this crate ships a bin)

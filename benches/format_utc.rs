@@ -1,7 +1,9 @@
 // file: benches/format_utc.rs
 // description: criterion benchmark for tools::format_utc
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{Criterion, criterion_group, criterion_main};
 use gpt55_chat::tools::format_utc;
 
 fn bench_format_utc(c: &mut Criterion) {

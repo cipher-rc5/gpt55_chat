@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Native git pre-push hook — runs the full local CI gate (see `just ci`) before
+# anything leaves this machine. The gate checks the working tree as it is, so
+# commit or stash unrelated edits before pushing.
+# Enable once per clone:  just hooks   (sets core.hooksPath=.githooks)
+#
+# Bypass in an emergency:  git push --no-verify   (avoid; prefer fixing the cause)
+set -euo pipefail
+
+if ! command -v just >/dev/null 2>&1; then
+  echo "pre-push: 'just' is not installed — install with 'brew install just'." >&2
+  exit 1
+fi
+
+exec just ci
